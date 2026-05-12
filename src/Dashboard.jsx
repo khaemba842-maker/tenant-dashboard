@@ -8,11 +8,11 @@ const BASE_ID = "app7mLVLcLGI3mqKF";
 
 async function proxyFetch(path) {
   const res = await fetch(`/api/airtable${path}`);
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Request failed: ${res.status}`);
+    throw new Error(data.error || data.message || `Request failed: ${res.status} on ${path}`);
   }
-  return res.json();
+  return data;
 }
 
 async function fetchAllRecords(tableId) {
@@ -104,9 +104,9 @@ const SectionTitle = ({ children, count }) => (
 );
 
 const TABLE_IDS = {
-  TENANTS: "tbl8m62u87N4Ktz74",
-  LEDGER: null,
-  PAYMENTS: null,
+  TENANTS:  "tblQIfaVVIVw3URwg",
+  LEDGER:   "tbl8m62u87N4Ktz74",
+  PAYMENTS: "tblNkds8ZZG4DL0Xl",
 };
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
@@ -123,30 +123,16 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      // Discover ledger + payments table IDs
-      try {
-        const meta = await discoverTables();
-        const ledgerTable   = meta.tables.find(t => t.name.toLowerCase().includes("ledger"));
-        const paymentsTable = meta.tables.find(t =>
-          t.name.toLowerCase().includes("payment") && !t.name.toLowerCase().includes("ledger")
-        );
-        TABLE_IDS.LEDGER   = ledgerTable?.id   || null;
-        TABLE_IDS.PAYMENTS = paymentsTable?.id || null;
-      } catch (_) {
-        // meta API failed (CORS on some setups) — fall through with nulls
-      }
-
-      const tenantRecords = await fetchAllRecords(TABLE_IDS.TENANTS);
+      const [tenantRecords, ledgerRecords, paymentRecords] = await Promise.all([
+        fetchAllRecords(TABLE_IDS.TENANTS),
+        fetchAllRecords(TABLE_IDS.LEDGER),
+        fetchAllRecords(TABLE_IDS.PAYMENTS),
+      ]);
       setTenants(tenantRecords);
-
-      if (TABLE_IDS.LEDGER) {
-        setLedger(await fetchAllRecords(TABLE_IDS.LEDGER));
-      }
-      if (TABLE_IDS.PAYMENTS) {
-        setPayments(await fetchAllRecords(TABLE_IDS.PAYMENTS));
-      }
+      setLedger(ledgerRecords);
+      setPayments(paymentRecords);
     } catch (e) {
-      setError(e.message);
+      setError(e.message || JSON.stringify(e));
     } finally {
       setLoading(false);
     }
